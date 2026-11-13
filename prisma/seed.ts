@@ -12,10 +12,11 @@ async function main() {
   const name = process.env.SEED_ADMIN_NAME || "IT Admin";
   if (!email) throw new Error("Set SEED_ADMIN_EMAIL to the first IT Admin's email address.");
 
+  const existed = await db.portalUser.findUnique({ where: { email } });
   const admin = await db.portalUser.upsert({
     where: { email },
     create: { email, name, role: "ADMIN" },
-    update: { role: "ADMIN", active: true },
+    update: {}, // never re-promote or re-activate on later runs (e.g. every deploy)
   });
   console.log(`IT Admin: ${admin.email}`);
 
@@ -24,7 +25,9 @@ async function main() {
     const [bname, code] = b.split(":");
     await db.branch.upsert({ where: { code: code.toUpperCase() }, create: { name: bname, code: code.toUpperCase() }, update: {} });
   }
-  await db.auditLog.create({ data: { action: "SEED", entityType: "PortalUser", entityId: admin.id, summary: `Initial setup: ${admin.email} made IT Admin` } });
+  if (!existed) {
+    await db.auditLog.create({ data: { action: "SEED", entityType: "PortalUser", entityId: admin.id, summary: `Initial setup: ${admin.email} made IT Admin` } });
+  }
 
   if (process.env.SEED_DEMO === "true") {
     const domain = email.split("@")[1];

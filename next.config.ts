@@ -3,7 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  experimental: { serverActions: { bodySizeLimit: "10mb" } },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+      // GitHub Codespaces forwards the app through *.app.github.dev.
+      allowedOrigins: ["*.app.github.dev"],
+    },
+  },
   async headers() {
     return [
       {
