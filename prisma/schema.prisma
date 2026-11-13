@@ -1,0 +1,352 @@
+// SIDC Internal IT Portal – database schema (Phase 1)
+// PostgreSQL + Prisma. Passwords for staff systems are NEVER stored here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Supabase: DATABASE_URL = pooled connection (port 6543, ?pgbouncer=true),
+  // DIRECT_URL = direct/session connection (port 5432) used for migrations.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Portal users & roles ────────────────────────────────────────────────
+
+enum Role {
+  ADMIN     // IT Admin: everything, incl. portal user management and deletes
+  IT_STAFF  // IT team: assets, employees, accounts, handles HR requests
+  HR        // HR team: raises and tracks joiner/leaver/asset requests only
+  READ_ONLY // Management / auditors: view only (later)
+}
+
+/// People who can sign in to the portal. Only emails listed here and marked
+/// active can sign in. Sign-in = one-time code emailed to the clinic mailbox
+/// + authenticator app (TOTP). The portal stores no passwords.
+model PortalUser {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  role        Role
+  active      Boolean   @default(true)
+  lastLoginAt DateTime?
+  totpSecret  String?   // AES-256-GCM encrypted authenticator secret
+  totpEnabled Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+
+  auditEntries      AuditLog[]
+  requestsRaised    HrRequest[]        @relation("RequestRaisedBy")
+  requestsAssigned  HrRequest[]        @relation("RequestAssignedTo")
+  requestComments   HrRequestComment[]
+  assignmentsOut    AssetAssignment[]  @relation("AssignedBy")
+  assignmentsIn     AssetAssignment[]  @relation("ReturnedBy")
+  accountsCreated   EmployeeAccount[]
+  emailsSent        EmailLog[]
+  sessions          Session[]
+}
+
+/// Emailed one-time sign-in codes (only a hash is stored).
+model LoginCode {
+  id        String    @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+/// Server-side sessions (only a hash of the cookie token is stored).
+model Session {
+  id          String     @id @default(cuid())
+  tokenHash   String     @unique
+  userId      String
+  user        PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mfaPassed   Boolean    @default(false)
+  mfaAttempts Int        @default(0)
+  expiresAt   DateTime
+  lastSeenAt  DateTime   @default(now())
+  createdAt   DateTime   @default(now())
+  ip          String?
+  userAgent   String?
+
+  @@index([userId])
+}
+
+// ─── Reference data ──────────────────────────────────────────────────────
+
+model Branch {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String     @unique
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  employees Employee[]
+  assets    Asset[]
+}
+
+// ─── Employees ───────────────────────────────────────────────────────────
+
+enum EmployeeStatus {
+  ACTIVE
+  LEFT
+}
+
+model Employee {
+  id          String         @id @default(cuid())
+  employeeId  String         @unique // clinic HR employee number
+  fullName    String
+  email       String?
+  jobTitle    String?
+  department  String?
+  branchId    String?
+  branch      Branch?        @relation(fields: [branchId], references: [id])
+  lineManager String?
+  startDate   DateTime?      @db.Date
+  endDate     DateTime?      @db.Date
+  status      EmployeeStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  assetsHeld  Asset[]           @relation("CurrentOwner")
+  assignments AssetAssignment[]
+  accounts    EmployeeAccount[]
+  requests    HrRequest[]
+
+  @@index([fullName])
+  @@index([status])
+}
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+}
+
+/// IT accounts an employee holds (email, Windows login, practice software…).
+/// Usernames only – passwords are never stored.
+model EmployeeAccount {
+  id          String        @id @default(cuid())
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id])
+  system      String
+  username    String
+  status      AccountStatus @default(ACTIVE)
+  createdOn   DateTime      @default(now()) @db.Date
+  createdById String?
+  createdBy   PortalUser?   @relation(fields: [createdById], references: [id])
+  disabledOn  DateTime?     @db.Date
+  deletedOn   DateTime?     @db.Date
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([employeeId])
+}
+
+// ─── Assets ──────────────────────────────────────────────────────────────
+
+enum AssetCategory {
+  LAPTOP
+  DESKTOP
+  MONITOR
+  PHONE
+  TABLET
+  PRINTER
+  NETWORK
+  PERIPHERAL
+  OTHER
+}
+
+enum AssetStatus {
+  IN_STOCK
+  ASSIGNED
+  UNDER_REPAIR
+  RETIRED
+  LOST_STOLEN
+}
+
+model Asset {
+  id              String        @id @default(cuid())
+  assetTag        String        @unique // e.g. SIDC-LT-0001, auto-generated
+  category        AssetCategory
+  make            String?
+  model           String?
+  serialNumber    String?       @unique
+  purchaseDate    DateTime?     @db.Date
+  vendor          String?
+  purchaseCost    Decimal?      @db.Decimal(12, 2)
+  invoiceRef      String?
+  warrantyExpiry  DateTime?     @db.Date
+  branchId        String?
+  branch          Branch?       @relation(fields: [branchId], references: [id])
+  status          AssetStatus   @default(IN_STOCK)
+  currentOwnerId  String?
+  currentOwner    Employee?     @relation("CurrentOwner", fields: [currentOwnerId], references: [id])
+  conditionNotes  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  assignments AssetAssignment[]
+
+  @@index([status])
+  @@index([category])
+  @@index([branchId])
+  @@index([warrantyExpiry])
+}
+
+/// One row per hand-over: who had the device, from when to when, in what
+/// condition. Gives the full owner history of every asset.
+model AssetAssignment {
+  id             String      @id @default(cuid())
+  assetId        String
+  asset          Asset       @relation(fields: [assetId], references: [id])
+  employeeId     String
+  employee       Employee    @relation(fields: [employeeId], references: [id])
+  assignedAt     DateTime    @db.Date
+  assignedById   String
+  assignedBy     PortalUser  @relation("AssignedBy", fields: [assignedById], references: [id])
+  conditionOut   String?
+  returnedAt     DateTime?   @db.Date
+  returnedById   String?
+  returnedBy     PortalUser? @relation("ReturnedBy", fields: [returnedById], references: [id])
+  conditionIn    String?
+  createdAt      DateTime    @default(now())
+
+  @@index([assetId])
+  @@index([employeeId])
+}
+
+/// Atomic per-category counters used to generate asset tags.
+model AssetTagCounter {
+  category AssetCategory @id
+  next     Int           @default(1)
+}
+
+// ─── HR requests (raised by HR in the portal) ───────────────────────────
+
+enum HrRequestType {
+  JOINER           // new user: accounts + assets
+  LEAVER           // offboarding: collect assets, disable accounts
+  ASSET_ALLOCATION // give an existing employee equipment
+  ASSET_RETURN     // collect equipment from an existing employee
+}
+
+enum HrRequestStatus {
+  SUBMITTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model HrRequest {
+  id             String          @id @default(cuid())
+  reference      String          @unique // e.g. REQ-2026-0001
+  type           HrRequestType
+  status         HrRequestStatus @default(SUBMITTED)
+
+  // Who the request is about. For joiners the employee may not exist yet.
+  employeeId     String?
+  employee       Employee?       @relation(fields: [employeeId], references: [id])
+  employeeName   String
+  employeeNumber String?
+  jobTitle       String?
+  department     String?
+  branchName     String?
+  lineManager    String?
+  effectiveDate  DateTime?       @db.Date // start date / last working day / needed by
+  details        String?         // free text: systems needed, equipment, notes
+
+  raisedById     String
+  raisedBy       PortalUser      @relation("RequestRaisedBy", fields: [raisedById], references: [id])
+  assignedToId   String?
+  assignedTo     PortalUser?     @relation("RequestAssignedTo", fields: [assignedToId], references: [id])
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  comments HrRequestComment[]
+  emails   EmailLog[]
+
+  @@index([status])
+  @@index([type])
+}
+
+model HrRequestComment {
+  id        String     @id @default(cuid())
+  requestId String
+  request   HrRequest  @relation(fields: [requestId], references: [id])
+  authorId  String
+  author    PortalUser @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime   @default(now())
+
+  @@index([requestId])
+}
+
+model RequestCounter {
+  year Int @id
+  next Int @default(1)
+}
+
+// ─── Email record (official audit evidence) ─────────────────────────────
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+/// Every email the portal sends is stored here in full, BEFORE it is sent.
+/// This is the formal HR ⇄ IT record for audits. Rows are append-only
+/// (only the delivery status fields may change; enforced by a DB trigger).
+model EmailLog {
+  id          String      @id @default(cuid())
+  requestId   String?
+  request     HrRequest?  @relation(fields: [requestId], references: [id])
+  kind        String      // e.g. REQUEST_SUBMITTED, REQUEST_COMPLETED
+  fromAddress String
+  toAddresses String[]
+  ccAddresses String[]
+  subject     String
+  bodyText    String
+  bodyHtml    String
+  sentById    String?
+  sentBy      PortalUser? @relation(fields: [sentById], references: [id])
+  status      EmailStatus @default(QUEUED)
+  transport   String
+  messageId   String?
+  error       String?
+  createdAt   DateTime    @default(now())
+  sentAt      DateTime?
+
+  @@index([requestId])
+}
+
+// ─── Audit log ──────────────────────────────────────────────────────────
+
+/// Append-only. UPDATE and DELETE are blocked by a database trigger, so
+/// entries cannot be changed even by someone with direct DB access via the app.
+model AuditLog {
+  id         BigInt      @id @default(autoincrement())
+  at         DateTime    @default(now())
+  actorId    String?
+  actor      PortalUser? @relation(fields: [actorId], references: [id])
+  actorEmail String?
+  action     String      // CREATE, UPDATE, ASSIGN, RETURN, TRANSFER, SEND, DELETE, LOGIN, IMPORT…
+  entityType String      // Asset, Employee, HrRequest, PortalUser…
+  entityId   String?
+  summary    String
+  before     Json?
+  after      Json?
+
+  @@index([entityType, entityId])
+  @@index([at])
+  @@index([actorId])
+}
