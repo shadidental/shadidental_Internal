@@ -1,0 +1,19 @@
+{
+  "name": "SIDC IT Portal",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "IT Portal", "onAutoForward": "openBrowser" }
+  },
+  "secrets": {
+    "DATABASE_URL": { "description": "Supabase transaction pooler URL (port 6543) ending ?pgbouncer=true&connection_limit=1" },
+    "DIRECT_URL": { "description": "Supabase session/direct URL (port 5432), used for migrations" },
+    "APP_SECRET": { "description": "48+ random characters; keep it the same forever" },
+    "SEED_ADMIN_EMAIL": { "description": "Your email: becomes the first IT Admin" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postAttachCommand": "npm run dev",
+  "customizations": {
+    "vscode": { "extensions": ["Prisma.prisma", "bradlc.vscode-tailwindcss"] }
+  }
+}

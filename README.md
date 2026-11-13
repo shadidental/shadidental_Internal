@@ -51,6 +51,19 @@ Only emails an IT Admin has added can sign in. Removing a user signs them out im
    Add `SEED_DEMO=true` to the seed command to also create a demo IT Staff user (`it.staff@<your domain>`), a demo HR user (`hr@<your domain>`) and three demo employees.
 5. **Email while testing:** set `EMAIL_TRANSPORT=log` and sign-in codes and request emails are printed in the terminal instead of being sent. To send real email, set the Roundcube mailbox's SMTP details (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`). Your hosting provider's Roundcube settings page lists them.
 
+## Testing in GitHub Codespaces (nothing to install)
+
+1. On GitHub, go to your profile → **Settings → Codespaces → Secrets → New secret**. Add these four, each with access to the `shadidental_internal` repository:
+   - `DATABASE_URL`: the Supabase transaction pooler string (port 6543), ending `?pgbouncer=true&connection_limit=1`
+   - `DIRECT_URL`: the Supabase session/direct string (port 5432)
+   - `APP_SECRET`: 48 or more random characters (for example from `openssl rand -base64 48`). Never change it afterwards.
+   - `SEED_ADMIN_EMAIL`: your email, which becomes the first IT Admin
+2. Open the repository, then click **Code → Codespaces → Create codespace on main**.
+3. Wait for setup to finish. It installs everything, creates the tables, and adds you plus demo `hr@` and `it.staff@` users at your email domain. The portal then starts and opens in a new tab.
+4. Sign in with your email. The 6-digit code is printed in the Codespace **terminal**, because emails are logged rather than sent. Then scan the QR code with your authenticator app.
+
+The forwarded link is private to your GitHub account. To let a colleague test, open the **Ports** tab, right-click port 3000 and choose **Port visibility → Public**. Switch it back afterwards. Codespaces stop after 30 minutes of inactivity, and you restart them from the same menu.
+
 ## Go-live on the clinic's own server
 
 The app uses only standard PostgreSQL, so moving off Supabase is just a change of connection strings.
