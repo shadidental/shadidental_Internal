@@ -1,5 +1,5 @@
 import "server-only";
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { db } from "./db";
 import { config } from "./config";
 
@@ -20,7 +20,7 @@ function transportName(): string {
   return process.env.EMAIL_TRANSPORT || (process.env.SMTP_HOST ? "smtp" : "log");
 }
 
-let smtp: nodemailer.Transporter | null = null;
+let smtp: Transporter | null = null;
 function smtpTransport() {
   if (!smtp) {
     const port = Number(process.env.SMTP_PORT || 587);
