@@ -1,0 +1,37 @@
+# Render Blueprint: free web service for testing, connected to Supabase.
+# On render.com: New → Blueprint → pick this repo. You'll be asked for the
+# values marked "sync: false".
+services:
+  - type: web
+    name: sidc-it-portal
+    runtime: node
+    plan: free
+    region: frankfurt          # closest Render region to the UAE
+    branch: main
+    buildCommand: bash scripts/render-build.sh
+    startCommand: npm start
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL       # Supabase transaction pooler (6543) …?pgbouncer=true&connection_limit=1
+        sync: false
+      - key: DIRECT_URL         # Supabase session/direct (5432)
+        sync: false
+      - key: APP_URL            # e.g. https://sidc-it-portal.onrender.com
+        sync: false
+      - key: SEED_ADMIN_EMAIL   # your email: first IT Admin
+        sync: false
+      - key: SEED_ADMIN_NAME
+        sync: false
+      - key: APP_SECRET         # generated once by Render; never change it
+        generateValue: true
+      - key: SEED_DEMO          # creates demo hr@ / it.staff@ users; set false before real use
+        value: "true"
+      - key: EMAIL_TRANSPORT    # "log" = sign-in codes appear in Render → Logs. Switch to "smtp" + SMTP_* when ready
+        value: log
+      - key: IT_MAILBOX
+        sync: false
+      - key: HR_MAILBOX
+        sync: false

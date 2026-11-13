@@ -51,6 +51,25 @@ Only emails an IT Admin has added can sign in. Removing a user signs them out im
    Add `SEED_DEMO=true` to the seed command to also create a demo IT Staff user (`it.staff@<your domain>`), a demo HR user (`hr@<your domain>`) and three demo employees.
 5. **Email while testing:** set `EMAIL_TRANSPORT=log` and sign-in codes and request emails are printed in the terminal instead of being sent. To send real email, set the Roundcube mailbox's SMTP details (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`). Your hosting provider's Roundcube settings page lists them.
 
+## Test web app on Render (free) + Supabase
+
+This gives the team a real web address, such as `https://sidc-it-portal.onrender.com`. Every merge to `main` redeploys it automatically.
+
+1. **Supabase:** create the project, turn the **Data API off** (Project Settings → Data API), then click **Connect → ORMs → Prisma** and copy the two connection strings.
+2. **Render:** sign in at render.com with the shadidental GitHub account, then go to **New → Blueprint**, choose `shadidental_internal`, and click **Apply**. When asked, fill in:
+   - `DATABASE_URL`: the port 6543 string with `?pgbouncer=true&connection_limit=1` at the end. Replace `[YOUR-PASSWORD]` with your database password.
+   - `DIRECT_URL`: the port 5432 string
+   - `APP_URL`: `https://sidc-it-portal.onrender.com`. Use the name Render shows; you can fix it after the first deploy.
+   - `SEED_ADMIN_EMAIL` / `SEED_ADMIN_NAME`: you, as the first IT Admin
+   - `IT_MAILBOX` / `HR_MAILBOX`: the clinic's IT and HR addresses
+
+   `APP_SECRET` is generated automatically.
+3. The first deploy creates the tables and your admin account. Open the link and sign in. While `EMAIL_TRANSPORT=log`, your **6-digit code appears under Logs** in the Render dashboard.
+4. **Real email**, so HR and IT colleagues can sign in themselves: in Render → Environment, set `EMAIL_TRANSPORT=smtp` and add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` from the Roundcube mailbox's hosting settings.
+5. Before using real data, set `SEED_DEMO=false`. To get rid of the demo users, remove their access under **Portal users**.
+
+The free plan sleeps after 15 minutes without visits, so the first page load after a break takes about a minute.
+
 ## Testing in GitHub Codespaces (nothing to install)
 
 1. On GitHub, go to your profile → **Settings → Codespaces → Secrets → New secret**. Add these four, each with access to the `shadidental_internal` repository:
