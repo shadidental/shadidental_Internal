@@ -2,7 +2,10 @@
 // PostgreSQL + Prisma. Passwords for staff systems are NEVER stored here.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Load relations with SQL JOINs (one round trip) instead of one query per
+  // relation. Matters a lot when the database is far from the app server.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

@@ -37,7 +37,7 @@ Only emails an IT Admin has added can sign in. Removing a user signs them out im
 1. Create a Supabase project. Pick the region closest to the UAE, and check data-residency rules before you add real staff data.
 2. In **Project Settings → Data API**, turn the Data API **off**. The portal doesn't use it. As a safety net, a migration also enables row-level security and revokes the `anon` and `authenticated` roles on every table.
 3. In **Connect → ORMs → Prisma**, copy the two connection strings into `.env` (see `.env.example`):
-   - `DATABASE_URL`: the transaction pooler on port 6543, with `?pgbouncer=true&connection_limit=1`
+   - `DATABASE_URL`: the transaction pooler on port 6543, with `?pgbouncer=true&connection_limit=5`
    - `DIRECT_URL`: the session pooler or direct connection on port 5432
 4. Run:
    ```bash
@@ -57,7 +57,7 @@ This gives the team a real web address, such as `https://sidc-it-portal.onrender
 
 1. **Supabase:** create the project, turn the **Data API off** (Project Settings → Data API), then click **Connect → ORMs → Prisma** and copy the two connection strings.
 2. **Render:** sign in at render.com with the shadidental GitHub account, then go to **New → Blueprint**, choose `shadidental_internal`, and click **Apply**. When asked, fill in:
-   - `DATABASE_URL`: the port 6543 string with `?pgbouncer=true&connection_limit=1` at the end. Replace `[YOUR-PASSWORD]` with your database password.
+   - `DATABASE_URL`: the port 6543 string with `?pgbouncer=true&connection_limit=5` at the end. Replace `[YOUR-PASSWORD]` with your database password.
    - `DIRECT_URL`: the port 5432 string
    - `APP_URL`: `https://sidc-it-portal.onrender.com`. Use the name Render shows; you can fix it after the first deploy.
    - `SEED_ADMIN_EMAIL` / `SEED_ADMIN_NAME`: you, as the first IT Admin
@@ -73,7 +73,7 @@ The free plan sleeps after 15 minutes without visits, so the first page load aft
 ## Testing in GitHub Codespaces (nothing to install)
 
 1. On GitHub, go to your profile → **Settings → Codespaces → Secrets → New secret**. Add these four, each with access to the `shadidental_internal` repository:
-   - `DATABASE_URL`: the Supabase transaction pooler string (port 6543), ending `?pgbouncer=true&connection_limit=1`
+   - `DATABASE_URL`: the Supabase transaction pooler string (port 6543), ending `?pgbouncer=true&connection_limit=5`
    - `DIRECT_URL`: the Supabase session/direct string (port 5432)
    - `APP_SECRET`: 48 or more random characters (for example from `openssl rand -base64 48`). Never change it afterwards.
    - `SEED_ADMIN_EMAIL`: your email, which becomes the first IT Admin
