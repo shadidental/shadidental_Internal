@@ -15,22 +15,23 @@ export const metadata = { title: "Asset" };
 export default async function AssetPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser("assets:view");
   const { id } = await params;
-  const asset = await db.asset.findUnique({
-    where: { id },
-    include: {
-      branch: true, currentOwner: true,
-      assignments: { include: { employee: true, assignedBy: true, returnedBy: true }, orderBy: [{ assignedAt: "desc" }, { createdAt: "desc" }] },
-    },
-  });
-  if (!asset) notFound();
   const editable = can(user.role, "assets:edit");
-  const [history, employees, branches] = await Promise.all([
+  // All lookups start together: one round trip to the database, not two.
+  const [asset, history, employees, branches] = await Promise.all([
+    db.asset.findFirst({
+      where: { id },
+      include: {
+        branch: true, currentOwner: true,
+        assignments: { include: { employee: true, assignedBy: true, returnedBy: true }, orderBy: [{ assignedAt: "desc" }, { createdAt: "desc" }] },
+      },
+    }),
     db.auditLog.findMany({ where: { entityType: "Asset", entityId: id }, orderBy: { at: "desc" }, take: 100 }),
-    editable && asset.status === "IN_STOCK"
+    editable
       ? db.employee.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, employeeId: true } })
       : Promise.resolve([]),
     editable ? db.branch.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
+  if (!asset) notFound();
   const today = todayDate().toISOString().slice(0, 10);
   const warrantySoon = asset.warrantyExpiry && asset.warrantyExpiry.getTime() - Date.now() < 30 * 86400_000;
 

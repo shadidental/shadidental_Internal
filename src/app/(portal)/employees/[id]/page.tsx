@@ -15,7 +15,7 @@ export const metadata = { title: "Employee" };
 export default async function EmployeePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser("employees:view");
   const { id } = await params;
-  const e = await db.employee.findUnique({
+  const [e, history] = await Promise.all([db.employee.findFirst({
     where: { id },
     include: {
       branch: true,
@@ -24,10 +24,9 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
       accounts: { include: { createdBy: true }, orderBy: [{ status: "asc" }, { system: "asc" }] },
       requests: { orderBy: { createdAt: "desc" } },
     },
-  });
+  }), db.auditLog.findMany({ where: { entityType: "Employee", entityId: id }, orderBy: { at: "desc" }, take: 100 })]);
   if (!e) notFound();
   const editable = can(user.role, "employees:edit");
-  const history = await db.auditLog.findMany({ where: { entityType: "Employee", entityId: id }, orderBy: { at: "desc" }, take: 100 });
   const pastAssignments = e.assignments.filter((a) => a.returnedAt);
 
   return (

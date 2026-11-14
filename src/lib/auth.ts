@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { PortalUser, Role } from "@prisma/client";
@@ -11,20 +12,27 @@ export const SESSION_COOKIE = "sidc_session";
 
 export type CurrentUser = Pick<PortalUser, "id" | "email" | "name" | "role" | "totpEnabled">;
 
-async function readSession() {
+/**
+ * One session lookup per request: layout, page and actions all share it
+ * (React cache), and the user is fetched in the same query via a JOIN.
+ */
+const readSession = cache(async () => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const session = await db.session.findUnique({
+  // findFirst (not findUnique): Prisma batches findUnique calls and then
+  // fetches the user in a second round trip; findFirst keeps the JOIN.
+  const session = await db.session.findFirst({
+    relationLoadStrategy: "join",
     where: { tokenHash: sha256(token) },
     include: { user: true },
   });
   if (!session || session.expiresAt < new Date() || !session.user.active) return null;
-  // Touch at most once a minute.
-  if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
-    await db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
+  // Touch at most every 5 minutes, without making the page wait for it.
+  if (Date.now() - session.lastSeenAt.getTime() > 300_000) {
+    db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
   return session;
-}
+});
 
 /** Creates a half-authenticated session after the emailed code is verified. */
 export async function createSession(userId: string) {

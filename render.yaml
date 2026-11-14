@@ -15,7 +15,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: DATABASE_URL       # Supabase transaction pooler (6543) …?pgbouncer=true&connection_limit=1
+      - key: DATABASE_URL       # Supabase transaction pooler (6543) …?pgbouncer=true&connection_limit=5
         sync: false
       - key: DIRECT_URL         # Supabase session/direct (5432)
         sync: false

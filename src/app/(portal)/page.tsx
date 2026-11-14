@@ -13,13 +13,26 @@ export const metadata = { title: "Dashboard" };
 export default async function Dashboard() {
   const user = await requireUser();
   const isHR = user.role === "HR";
-  const openReqs = await db.hrRequest.findMany({
-    where: { status: { in: ["SUBMITTED", "IN_PROGRESS"] } },
-    include: { raisedBy: true, assignedTo: true }, orderBy: { createdAt: "asc" }, take: 10,
-  });
+  const showStats = !isHR && can(user.role, "assets:view");
+  const openWhere = { status: { in: ["SUBMITTED", "IN_PROGRESS"] as ("SUBMITTED" | "IN_PROGRESS")[] } };
+  // Start every query at once so the page waits for one round trip, not six.
+  const in30 = new Date(Date.now() + 30 * 86400_000);
+  const statsPromise = showStats
+    ? Promise.all([
+        db.asset.groupBy({ by: ["status"], _count: true }),
+        db.asset.groupBy({ by: ["category"], _count: true, orderBy: { _count: { category: "desc" } } }),
+        db.employee.count({ where: { status: "ACTIVE" } }),
+        db.asset.findMany({ where: { warrantyExpiry: { gte: new Date(), lte: in30 }, status: { notIn: ["RETIRED", "LOST_STOLEN"] } }, orderBy: { warrantyExpiry: "asc" }, take: 8 }),
+        can(user.role, "audit:view") ? db.auditLog.findMany({ where: { action: { notIn: ["LOGIN", "LOGOUT"] } }, orderBy: { at: "desc" }, take: 8 }) : Promise.resolve([]),
+      ])
+    : null;
+  const [openReqs, openCount] = await Promise.all([
+    db.hrRequest.findMany({ where: openWhere, include: { raisedBy: true, assignedTo: true }, orderBy: { createdAt: "asc" }, take: 10 }),
+    db.hrRequest.count({ where: openWhere }),
+  ]);
 
   const requestsCard = (
-    <Card title={`Open requests (${openReqs.length})`} actions={<Link className="link text-sm" href="/requests">View all</Link>}>
+    <Card title={`Open requests (${openCount})`} actions={<Link className="link text-sm" href="/requests">View all</Link>}>
       {openReqs.length === 0 ? <p className="text-sm text-slate-500">Nothing open. 🎉</p> : (
         <ul className="divide-y divide-slate-100">
           {openReqs.map((r) => (
@@ -36,7 +49,7 @@ export default async function Dashboard() {
     </Card>
   );
 
-  if (isHR || !can(user.role, "assets:view")) {
+  if (!statsPromise) {
     return (
       <>
         <PageHeader title={`Hello, ${user.name.split(" ")[0]}`} subtitle="Raise joiner, leaver and equipment requests to IT and follow their progress."
@@ -55,14 +68,7 @@ export default async function Dashboard() {
     );
   }
 
-  const in30 = new Date(Date.now() + 30 * 86400_000);
-  const [byStatus, byCategory, employees, warranty, recent] = await Promise.all([
-    db.asset.groupBy({ by: ["status"], _count: true }),
-    db.asset.groupBy({ by: ["category"], _count: true, orderBy: { _count: { category: "desc" } } }),
-    db.employee.count({ where: { status: "ACTIVE" } }),
-    db.asset.findMany({ where: { warrantyExpiry: { gte: new Date(), lte: in30 }, status: { notIn: ["RETIRED", "LOST_STOLEN"] } }, orderBy: { warrantyExpiry: "asc" }, take: 8 }),
-    can(user.role, "audit:view") ? db.auditLog.findMany({ where: { action: { notIn: ["LOGIN", "LOGOUT"] } }, orderBy: { at: "desc" }, take: 8 }) : Promise.resolve([]),
-  ]);
+  const [byStatus, byCategory, employees, warranty, recent] = await statsPromise;
   const count = (s: AssetStatus) => byStatus.find((b) => b.status === s)?._count ?? 0;
   const total = byStatus.reduce((n, b) => n + b._count, 0);
 
@@ -70,7 +76,7 @@ export default async function Dashboard() {
     <>
       <PageHeader title="IT dashboard" subtitle={`Signed in as ${user.name}`} />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Tile label="Open HR requests" value={openReqs.length} href="/requests" accent />
+        <Tile label="Open HR requests" value={openCount} href="/requests" accent />
         <Tile label="Assets" value={total} href="/assets" />
         <Tile label={ASSET_STATUS_LABELS.ASSIGNED} value={count("ASSIGNED")} href="/assets?status=ASSIGNED" />
         <Tile label={ASSET_STATUS_LABELS.IN_STOCK} value={count("IN_STOCK")} href="/assets?status=IN_STOCK" />

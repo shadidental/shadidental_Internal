@@ -16,7 +16,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   const user = await requireUser("requests:view");
   const { ref } = await params;
   const { sent, closed, withdrawn } = await searchParams;
-  const r = await db.hrRequest.findUnique({
+  const r = await db.hrRequest.findFirst({
     where: { reference: decodeURIComponent(ref) },
     include: {
       raisedBy: true, assignedTo: true, employee: true,
